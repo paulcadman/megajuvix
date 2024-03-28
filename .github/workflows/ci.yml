@@ -90,7 +90,6 @@ jobs:
           repository: lambdaclass/cairo-vm
           path: cairo-vm
           ref: ${{ env.CAIRO_VM_VERSION }}
-          sparse-checkout: .
 
       - name: ls cairo-vm
         shell: bash
@@ -152,7 +151,6 @@ jobs:
           repository: lambdaclass/cairo-vm
           path: cairo-vm
           ref: ${{ env.CAIRO_VM_VERSION }}
-          sparse-checkout: .
 
       - name: Install Cairo VM
         if: steps.cache-cairo-vm.outputs.cache-hit != 'true'
