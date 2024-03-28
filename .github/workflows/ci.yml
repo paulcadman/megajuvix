@@ -113,8 +113,8 @@ jobs:
       - name: run cairo stuff
         shell: bash
         run: |
-          run_cairo_vm
           cairo-vm-cli --help
+          run_cairo_vm.sh
 
   build-and-test-macos:
     runs-on: macos-12
@@ -170,5 +170,5 @@ jobs:
       - name: run cairo stuff
         shell: bash
         run: |
-          run_cairo_vm
           cairo-vm-cli --help
+          run_cairo_vm.sh
