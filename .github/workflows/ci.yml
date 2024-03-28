@@ -92,6 +92,12 @@ jobs:
           ref: ${{ env.CAIRO_VM_VERSION }}
           sparse-checkout: .
 
+      - name: ls cairo-vm
+        shell: bash
+        run: |
+          cd cairo-vm
+          ls -lh
+
       - name: Install Cairo VM
         if: steps.cache-cairo-vm.outputs.cache-hit != 'true'
         shell: bash
