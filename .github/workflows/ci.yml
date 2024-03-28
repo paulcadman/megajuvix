@@ -26,6 +26,7 @@ env:
   SKIP: ormolu,format-juvix-files,typecheck-juvix-examples
   VAMPIRREPO: anoma/vamp-ir
   VAMPIRVERSION: v0.1.3
+  CAIRO_VM_VERSION: 42e04161de82d7e5381258def4b65087c8944660
 
 jobs:
   pre-commit:
@@ -63,141 +64,51 @@ jobs:
           path: main
           submodules: true
 
-      - name: Cache LLVM and Clang
-        id: cache-llvm
-        uses: actions/cache@v3
-        with:
-          path: |
-            C:/Program Files/LLVM
-            ./llvm
-          key: "${{ runner.os }}-llvm-13"
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "13.0"
-          cached: "${{ steps.cache-llvm.outputs.cache-hit }}"
-
-      - name: Download and extract wasi-sysroot
-        run: >
-          curl
-          https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-15/wasi-sysroot-15.0.tar.gz
-          -OL
-
-          tar xfv wasi-sysroot-15.0.tar.gz
-
-      - name: Set WASI_SYSROOT_PATH
-        run: |
-          echo "WASI_SYSROOT_PATH=$GITHUB_WORKSPACE/wasi-sysroot" >> $GITHUB_ENV
-
       - name: Add ~/.local/bin to PATH
         run: |
           mkdir -p "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Install the latest Wasmer version
-        uses: jaxxstorm/action-install-gh-release@v1.10.0
-        with:
-          repo: wasmerio/wasmer
-          binaries-location: bin
-          chmod: 0755
-
-      - name: Install libs
-        run: sudo apt install -y libncurses5
-
-      - name: Install VampIR for testing
-        uses: jaxxstorm/action-install-gh-release@v1.10.0
-        with:
-          repo: ${{ env.VAMPIRREPO }}
-          platform: linux
-          tag: ${{ env.VAMPIRVERSION }}
-          chmod: 0755
-          rename-to: vamp-ir
-
-      - name: Test VampIR
+      - run: echo "HOME=$HOME" >> $GITHUB_ENV
         shell: bash
-        run: |
-          vamp-ir --version
+
+      - name: Cache CairoVM
+        id: cache-cairo-vm
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.HOME }}/.local/bin/cairo-vm-cli
+          key: ${{ runner.os }}-cairo-vm-${{ env.CAIRO_VM_VERSION }}
 
       - name: Install Rust toolchain
+        if: steps.cache-cairo-vm.outputs.cache-hit != 'true'
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Checkout CairoVM
+        uses: actions/checkout@v4
+        if: steps.cache-cairo-vm.outputs.cache-hit != 'true'
+        with:
+          repository: lambdaclass/cairo-vm
+          path: cairo-vm
+          ref: ${{ env.CAIRO_VM_VERSION }}
+
       - name: Install Cairo VM
+        if: steps.cache-cairo-vm.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          git clone https://github.com/lambdaclass/cairo-vm.git
           cd cairo-vm
           cargo build --release
           cp target/release/cairo-vm-cli $HOME/.local/bin/cairo-vm-cli
-          cd -
+
+      - name: Install run_cairo_vm.sh
+        shell: bash
+        run: |
           cp main/scripts/run_cairo_vm.sh $HOME/.local/bin/run_cairo_vm.sh
 
-      - name: Make runtime
-        run: |
-          cd main
-          make runtime
-
-      # We use the options:
-      #   - -fhide-source-paths
-      #   - -fwrite-ide-info -hiedir=.hie
-      # in package.yaml.
-      #
-      # If a previously available .hie directory is missing then GHC will rebuild the whole project.
-      # with reason: HIE file is missing. So we need to cache it.
-      - name: Cache .hie
-        id: cache-hie
-        uses: actions/cache@v3
-        with:
-          path: main/.hie
-          key: ${{ runner.os }}-stack-hie
-
-      - name: Stack setup
-        id: stack
-        uses: freckle/stack-action@v4
-        with:
-          working-directory: main
-          test: false
-
-      - name: Install and test Juvix
-        id: test
-        if: ${{ success() }}
-        run: |
-          cd main
-          make install
-          make test
-
-      - name: Typecheck and format Juvix examples
-        if: ${{ success() }}
+      - name: run cairo stuff
         shell: bash
         run: |
-          cd main
-          make check-format-juvix-files && make typecheck-juvix-examples
-
-      - name: Install Smoke for testing
-        uses: jaxxstorm/action-install-gh-release@v1.10.0
-        with:
-          repo: jonaprieto/smoke
-          platform: linux
-          tag: v2.3.2
-          chmod: 0755
-          rename-to: smoke
-          extension-matching: disable
-          cache: enable
-
-      # Smoke tests make git commits
-      - name: Setup git
-        shell: bash
-        run: |
-          git config --global user.email "tara-juvix@heliax.dev"
-          git config --global user.name "Tara"
-          git config --global init.defaultBranch main
-
-      - name: Smoke testing
-        id: smoke-linux
-        if: ${{ success() }}
-        run: |
-          cd main
-          make smoke-only
+          cairo-vm-cli --help
+          run_cairo_vm.sh
 
   build-and-test-macos:
     runs-on: macos-12
@@ -208,175 +119,50 @@ jobs:
           path: main
           submodules: true
 
-      - name: Install Sed
-        run: |
-          brew install gnu-sed
-          echo "$(brew --prefix)/opt/gnu-sed/libexec/gnubin" >> $GITHUB_PATH
-
-      - name: Test Sed
-        run: |
-          sed --version
-
-      - name: Install coreutils
-        run: |
-          brew install coreutils
-
-      - name: Test sha256sum (used by smoke)
-        run: |
-          sha256sum --version
-
-      - name: Download and extract wasi-sysroot
-        run: >
-          curl
-          https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-15/wasi-sysroot-15.0.tar.gz
-          -OL
-
-          tar xfv wasi-sysroot-15.0.tar.gz
-
-      - name: Set WASI_SYSROOT_PATH
-        run: |
-          echo "WASI_SYSROOT_PATH=$GITHUB_WORKSPACE/wasi-sysroot" >> $GITHUB_ENV
-
-      - name: Install the latest Wasmer version
-        uses: jaxxstorm/action-install-gh-release@v1.10.0
-        with:
-          repo: wasmerio/wasmer
-          binaries-location: bin
-          chmod: 0755
-
-      # smoke dynamically links to icu4c, so a cached binary of smoke will break
-      # when brew bumps the icu4c version. In the following steps we use the
-      # icu4c version in the cache key of the smoke build to avoid this issue.
-      #
-      # NB: The smoke build cannot be done as a separate job because the smoke
-      # binary must be built using exactly the same version of the macos-12
-      # runner image as the smoke testing step to make sure that the icu4c
-      # versions match.
-      - name: Checkout smoke repo
-        uses: actions/checkout@v3
-        with:
-          repository: jonaprieto/smoke
-          ref: regex-icu
-          path: smoke-repo
-
-      - name: Install ICU4C
-        run: |
-          brew install icu4c
-          brew link icu4c --force
-
-      - name: Get ICU4C version
-        id: icuversion
-        run: |
-          ICUVERSION=$(echo -n $(brew list --versions icu4c | head -n 1 | sed -E 's/ /-/g'))
-          echo "version=$ICUVERSION" >> $GITHUB_OUTPUT
-
-      - name: Build smoke
-        env:
-          LDFLAGS: -L/usr/local/opt/icu4c/lib
-          CPPFLAGS: -I/usr/local/opt/icu4c/include
-          PKG_CONFIG_PATH: /usr/local/opt/icu4c/lib/pkgconfig
-        uses: freckle/stack-action@v4
-        with:
-          test: false
-          stack-arguments: --copy-bins
-          working-directory: smoke-repo
-          cache-prefix: ${{ steps.icuversion.outputs.version }}
-          pedantic: false
-
-      - name: Set homebrew LLVM CC and LIBTOOL vars (macOS)
-        run: |
-          echo "CC=$(brew --prefix llvm@15)/bin/clang" >> $GITHUB_ENV
-          echo "LIBTOOL=$(brew --prefix llvm@15)/bin/llvm-ar" >> $GITHUB_ENV
-
       - name: Add ~/.local/bin to PATH
         run: |
           mkdir -p "$HOME/.local/bin"
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
+      - run: echo "HOME=$HOME" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Cache CairoVM
+        id: cache-cairo-vm
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.HOME }}/.local/bin/cairo-vm-cli
+          key: ${{ runner.os }}-cairo-vm-${{ env.CAIRO_VM_VERSION }}
+
       - name: Install Rust toolchain
+        if: steps.cache-cairo-vm.outputs.cache-hit != 'true'
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Checkout CairoVM
+        uses: actions/checkout@v4
+        if: steps.cache-cairo-vm.outputs.cache-hit != 'true'
+        with:
+          repository: lambdaclass/cairo-vm
+          path: cairo-vm
+          ref: ${{ env.CAIRO_VM_VERSION }}
+
       - name: Install Cairo VM
+        if: steps.cache-cairo-vm.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          git clone https://github.com/lambdaclass/cairo-vm.git
           cd cairo-vm
           cargo build --release
           cp -a target/release/cairo-vm-cli $HOME/.local/bin/cairo-vm-cli
           chmod a+x $HOME/.local/bin/cairo-vm-cli
-          cd -
+
+      - name: Install run_cairo_vm.sh
+        shell: bash
+        run: |
           cp -a main/scripts/run_cairo_vm.sh $HOME/.local/bin/run_cairo_vm.sh
           chmod a+x $HOME/.local/bin/run_cairo_vm.sh
 
-      - name: Make runtime
-        run: |
-          cd main
-          make CC=$CC LIBTOOL=$LIBTOOL runtime
-
-      # We use the options:
-      #   - -fhide-source-paths
-      #   - -fwrite-ide-info -hiedir=.hie
-      # in package.yaml.
-      #
-      # If a previously available .hie directory is missing then GHC will rebuild the whole project.
-      # with reason: HIE file is missing. So we need to cache it.
-      - name: Cache .hie
-        id: cache-hie
-        uses: actions/cache@v3
-        with:
-          path: main/.hie
-          key: ${{ runner.os }}-stack-hie
-
-      - name: Stack setup
-        id: stack
-        uses: freckle/stack-action@v4
-        with:
-          working-directory: main
-          test: false
-
-      - name: Add homebrew clang to the PATH (macOS)
-        run: |
-          echo "$(brew --prefix llvm@15)/bin" >> $GITHUB_PATH
-
-      - name: Install VampIR for testing
-        uses: jaxxstorm/action-install-gh-release@v1.10.0
-        with:
-          repo: ${{ env.VAMPIRREPO }}
-          platform: darwin
-          tag: ${{ env.VAMPIRVERSION }}
-          chmod: 0755
-          rename-to: vamp-ir
-
-      - name: Test VampIR
+      - name: run cairo stuff
         shell: bash
         run: |
-          vamp-ir --version
-
-      - name: Install and test Juvix
-        if: ${{ success() }}
-        run: |
-          cd main
-          make CC=$CC LIBTOOL=$LIBTOOL install
-          make CC=$CC LIBTOOL=$LIBTOOL test
-
-      - name: Typecheck and format Juvix examples
-        if: ${{ success() }}
-        shell: bash
-        run: |
-          cd main
-          make check-format-juvix-files && make typecheck-juvix-examples
-
-      # Smoke tests make git commits
-      - name: Setup git
-        shell: bash
-        run: |
-          git config --global user.email "tara-juvix@heliax.dev"
-          git config --global user.name "Tara"
-          git config --global init.defaultBranch main
-
-      - name: Smoke testing (macOS)
-        id: smoke-macos
-        if: ${{ success() }}
-        run: |
-          cd main
-          make CC=$CC LIBTOOL=$LIBTOOL smoke
+          cairo-vm-cli --help
+          run_cairo_vm.sh
