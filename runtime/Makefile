@@ -6,7 +6,7 @@ all: juvix_c juvix_rust
 
 .PHONY: juvix_c
 juvix_c:
-	cd c && $(MAKE) -j 4 -s
+	cd c && $(MAKE)
 
 .PHONY: juvix_rust
 juvix_rust:
