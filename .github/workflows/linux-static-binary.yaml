@@ -56,6 +56,11 @@ jobs:
       - name: Install llvm
         run: apk add --update llvm
 
+      - name: debug
+        run: |
+          which make
+          which clang
+
       - name: Runtime build
         run: make runtime LIBTOOL=llvm-ar
 
