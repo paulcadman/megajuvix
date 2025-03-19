@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build-linux:
-    name: Build static Linux binary and release
+    name: Build static Linux x86_64 binary
     runs-on: ubuntu-latest
     container: quay.io/benz0li/ghc-musl:9.8.2
     outputs:
@@ -96,7 +96,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64-binary
-          path: juvix-linux*
+          path: /tmp/juvix-linux*
           if-no-files-found: error
 
   build-darwin-x86_64:
@@ -239,4 +239,4 @@ jobs:
           artifactErrorsFailBuild: true
           artifacts: /tmp/juvix-*
           draft: true
-          allowUpdates: true
+          skipIfReleaseExists: true
